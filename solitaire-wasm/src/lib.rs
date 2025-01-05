@@ -81,38 +81,14 @@ impl GameState {
         let suits = vec!["hearts", "diamonds", "clubs", "spades"];
         let ranks = vec!["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
         let mut deck = Vec::new();
-    
+
         for suit in suits {
-            for rank in &ranks { // Borrow `ranks` to avoid moving it
+            for rank in &ranks {
                 deck.push(Card::new(rank, suit));
             }
         }
-    
+
         deck
-    }
-
-    fn can_move_to_tableau(&self, card: &Card, tableau_index: usize) -> bool {
-        // Placeholder: allow moving to empty piles or valid stacks
-        if let Some(last_card) = self.tableau[tableau_index].last() {
-            // Logic to check alternating color and descending rank
-            let is_alternating_color = (last_card.suit == "hearts" || last_card.suit == "diamonds")
-                != (card.suit == "hearts" || card.suit == "diamonds");
-            let is_descending_rank = card.rank == "Q"; // Replace with proper rank comparison
-            is_alternating_color && is_descending_rank
-        } else {
-            // Allow moving Kings to empty piles
-            card.rank == "K"
-        }
-    }
-
-    fn can_move_to_foundation(&self, card: &Card, foundation_index: usize) -> bool {
-        if let Some(last_card) = self.foundation[foundation_index].last() {
-            // Logic to check matching suit and ascending rank
-            last_card.suit == card.suit && card.rank == "2" // Replace with proper rank comparison
-        } else {
-            // Allow moving Aces to empty foundation piles
-            card.rank == "A"
-        }
     }
 
     fn new(ctx: CanvasRenderingContext2d, canvas: HtmlCanvasElement) -> Self {
@@ -134,6 +110,7 @@ impl GameState {
             stock: deck,
             waste: vec![],
             selected_card: None,
+            dragging_card: None,
             canvas,
             ctx,
         }
@@ -154,9 +131,6 @@ impl GameState {
         // Render foundation piles
         for (i, pile) in self.foundation.iter().enumerate() {
             if let Some(card) = pile.last() {
-                let mut card = card.clone();
-                card.x = 500.0 + i as f64 * 120.0;
-                card.y = 20.0;
                 card.draw(&self.ctx);
             } else {
                 #[allow(deprecated)]
@@ -168,9 +142,6 @@ impl GameState {
 
         // Render stock
         if let Some(card) = self.stock.last() {
-            let mut card = card.clone();
-            card.x = 20.0;
-            card.y = 20.0;
             card.draw(&self.ctx);
         }
 
@@ -190,64 +161,45 @@ impl GameState {
         }
     }
 
-    fn handle_click(&mut self, x: f64, y: f64) {
-        // Handle clicks on stock
-        if let Some(card) = self.stock.last_mut() {
-            if card.contains(x, y) {
-                let mut card = self.stock.pop().unwrap();
-                card.face_up = true;
-                self.waste.push(card);
-                self.render();
-                return;
-            }
-        }
-
-        // Handle tableau clicks
-        for i in 0..self.tableau.len() {
-            if let Some(card) = self.tableau[i].last() {
+    fn handle_mousedown(&mut self, x: f64, y: f64) {
+        // Check if a card is clicked in tableau piles
+        for (pile_idx, pile) in self.tableau.iter_mut().enumerate() {
+            if let Some(card) = pile.last() {
                 if card.contains(x, y) {
-                    if let Some((selected_card, source_index, source_type)) = self.selected_card.take() {
-                        if self.can_move_to_tableau(&selected_card, i) {
-                            self.tableau[i].push(selected_card.clone());
-                            if source_type == 0 {
-                                self.tableau[source_index].pop();
-                            } else if source_type == 1 {
-                                self.waste.pop();
-                            }
-                            self.render();
-                            return;
-                        }
-                    } else {
-                        self.selected_card = Some((card.clone(), i, 0)); // 0 indicates tableau
-                        self.render();
-                        return;
-                    }
+                    self.dragging_card = Some((
+                        card.clone(),
+                        x - card.x,
+                        y - card.y,
+                    ));
+                    pile.pop();
+                    self.render();
+                    return;
                 }
             }
         }
+    }
 
-        // Handle foundation clicks
-        for i in 0..self.foundation.len() {
-            if let Some(card) = self.foundation[i].last() {
-                if card.contains(x, y) {
-                    if let Some((selected_card, source_index, source_type)) = self.selected_card.take() {
-                        if self.can_move_to_foundation(&selected_card, i) {
-                            self.foundation[i].push(selected_card.clone());
-                            if source_type == 0 {
-                                self.tableau[source_index].pop();
-                            } else if source_type == 1 {
-                                self.waste.pop();
-                            }
-                            self.render();
-                            return;
-                        }
-                    }
+    fn handle_mousemove(&mut self, x: f64, y: f64) {
+        if let Some((ref mut card, offset_x, offset_y)) = self.dragging_card {
+            card.x = x - offset_x;
+            card.y = y - offset_y;
+            self.render();
+        }
+    }
+
+    fn handle_mouseup(&mut self, x: f64, y: f64) {
+        if let Some((card, _, _)) = self.dragging_card.take() {
+            // Example logic to drop card on tableau pile
+            for (pile_idx, pile) in self.tableau.iter_mut().enumerate() {
+                if pile.last().map_or(true, |last_card| last_card.contains(x, y)) {
+                    pile.push(card);
+                    self.render();
+                    return;
                 }
             }
         }
     }
 }
-
 
 #[wasm_bindgen]
 pub fn start() -> Result<(), JsValue> {
@@ -266,16 +218,44 @@ pub fn start() -> Result<(), JsValue> {
 
     {
         let game_state = game_state.clone();
-        let on_click = Closure::wrap(Box::new(move |event: MouseEvent| {
+        let on_mousedown = Closure::wrap(Box::new(move |event: MouseEvent| {
             let x = event.offset_x() as f64;
             let y = event.offset_y() as f64;
-            game_state.borrow_mut().handle_click(x, y);
+            game_state.borrow_mut().handle_mousedown(x, y);
         }) as Box<dyn FnMut(_)>);
 
         canvas
-            .add_event_listener_with_callback("click", on_click.as_ref().unchecked_ref())
+            .add_event_listener_with_callback("mousedown", on_mousedown.as_ref().unchecked_ref())
             .unwrap();
-        on_click.forget();
+        on_mousedown.forget();
+    }
+
+    {
+        let game_state = game_state.clone();
+        let on_mousemove = Closure::wrap(Box::new(move |event: MouseEvent| {
+            let x = event.offset_x() as f64;
+            let y = event.offset_y() as f64;
+            game_state.borrow_mut().handle_mousemove(x, y);
+        }) as Box<dyn FnMut(_)>);
+
+        canvas
+            .add_event_listener_with_callback("mousemove", on_mousemove.as_ref().unchecked_ref())
+            .unwrap();
+        on_mousemove.forget();
+    }
+
+    {
+        let game_state = game_state.clone();
+        let on_mouseup = Closure::wrap(Box::new(move |event: MouseEvent| {
+            let x = event.offset_x() as f64;
+            let y = event.offset_y() as f64;
+            game_state.borrow_mut().handle_mouseup(x, y);
+        }) as Box<dyn FnMut(_)>);
+
+        canvas
+            .add_event_listener_with_callback("mouseup", on_mouseup.as_ref().unchecked_ref())
+            .unwrap();
+        on_mouseup.forget();
     }
 
     game_state.borrow_mut().render();

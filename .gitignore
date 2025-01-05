@@ -1,0 +1,2 @@
+./solitaire-wasm/target
+./solitaire-wasm/Cargo.lock

@@ -193,9 +193,9 @@ impl GameState {
         // Check discard pile
         if let Some(card) = &self.discard {
             if card.contains(x, y) {
-                // Drag only the card from the discard pile
+                // Drag the card from the discard pile
                 self.dragging_card = Some((vec![card.clone()], x - card.x, y - card.y, 0, 1)); // 1 indicates the discard pile
-                self.discard = None; // Remove the card from the discard pile
+                self.discard = None; // Temporarily remove the card from the discard pile
                 self.render();
                 return;
             }
@@ -203,17 +203,19 @@ impl GameState {
     
         // Check tableau piles
         for (pile_idx, pile) in self.tableau.iter_mut().enumerate() {
-            // First, find the index of the card to drag without mutating the pile
+            // Find the index of the clicked card without mutating the pile
             if let Some(card_idx) = pile.iter().position(|card| card.contains(x, y) && card.face_up) {
-                // Once the index is found, split the pile to select the cards to drag
-                let cards_to_drag = pile.split_off(card_idx); // Split the pile at the selected card
-                self.dragging_card = Some((cards_to_drag, x - pile[card_idx - 1].x, y - pile[card_idx - 1].y, pile_idx, 0)); // Store the dragged cards
+                // Split the pile to select the cards to drag
+                let cards_to_drag = pile.split_off(card_idx); // Remove the selected cards from the tableau
+                let offset_x = x - cards_to_drag[0].x;
+                let offset_y = y - cards_to_drag[0].y;
+                self.dragging_card = Some((cards_to_drag, offset_x, offset_y, pile_idx, 0)); // Store them for dragging
                 self.render();
                 return;
             }
         }
-    }    
-       
+    }
+      
     fn handle_mousemove(&mut self, x: f64, y: f64) {
         if let Some((ref mut cards, offset_x, offset_y, _, _)) = self.dragging_card {
             for (i, card) in cards.iter_mut().enumerate() {
@@ -223,7 +225,7 @@ impl GameState {
             self.render();
         }
     }
-    
+
     fn handle_mouseup(&mut self, x: f64, y: f64) {
         if let Some((mut cards, _, _, pile_idx, pile_type)) = self.dragging_card.take() {
             let valid_drop = if cards.len() == 1 {
@@ -250,7 +252,7 @@ impl GameState {
     
             self.render();
         }
-    }    
+    }
     
     fn try_drop_card(&mut self, card: &Card, x: f64, y: f64) -> bool {
         // Check foundation piles first for valid drop

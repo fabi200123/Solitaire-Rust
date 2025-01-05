@@ -116,7 +116,7 @@ impl GameState {
 
     fn render(&mut self) {
         self.ctx.clear_rect(0.0, 0.0, self.canvas.width() as f64, self.canvas.height() as f64);
-
+    
         // Render tableau piles
         for (i, pile) in self.tableau.iter_mut().enumerate() {
             for (j, card) in pile.iter_mut().enumerate() {
@@ -125,10 +125,12 @@ impl GameState {
                 card.draw(&self.ctx);
             }
         }
-
+    
         // Render foundation piles
-        for (i, pile) in self.foundation.iter().enumerate() {
-            if let Some(card) = pile.last() {
+        for (i, pile) in self.foundation.iter_mut().enumerate() {
+            if let Some(card) = pile.last_mut() { // Use `last_mut` to get a mutable reference
+                card.x = 500.0 + i as f64 * 120.0;
+                card.y = 20.0;
                 card.draw(&self.ctx);
             } else {
                 #[allow(deprecated)]
@@ -137,14 +139,14 @@ impl GameState {
                 self.ctx.stroke_rect(500.0 + i as f64 * 120.0, 20.0, 100.0, 150.0);
             }
         }
-
+    
         // Render stock
-        if let Some(card) = self.stock.last_mut() {
+        if let Some(card) = self.stock.last_mut() { // Use `last_mut` to get a mutable reference
             card.x = 20.0;
             card.y = 20.0;
             card.draw(&self.ctx);
         }
-    }
+    }    
 
     fn handle_stock_click(&mut self) {
         if let Some(card) = self.stock.last_mut() {
@@ -185,21 +187,50 @@ impl GameState {
                     _ => {}
                 }
             }
+
+            // Turn face-up the last card in the pile
+            if let Some(last_card) = self.tableau[pile_idx].last_mut() {
+                last_card.face_up = true;
+            }
+
             self.render();
         }
     }
 
-    fn try_drop_card(&mut self, card: &Card, x: f64, y: f64) -> bool {
+    fn try_drop_card(&mut self, card: &Card, _x: f64, _y: f64) -> bool { // Prefix with `_` to suppress warnings
         // Check tableau piles for valid drop
         for pile in self.tableau.iter_mut() {
-            if pile.last().map_or(true, |last_card| last_card.contains(x, y)) {
+            if pile.last().map_or(true, |last_card| Self::is_valid_tableau_move(card, last_card)) {
                 pile.push(card.clone());
                 return true;
             }
         }
-
-        // Check foundation piles for valid drop (add rules for foundation here if needed)
+    
+        // Check foundation piles for valid drop
+        for pile in self.foundation.iter_mut() {
+            if pile.last().map_or(card.rank == "A", |last_card| Self::is_valid_foundation_move(card, last_card)) {
+                pile.push(card.clone());
+                return true;
+            }
+        }
+    
         false
+    }    
+
+    fn is_valid_tableau_move(card: &Card, target: &Card) -> bool {
+        let rank_order = vec!["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
+        let card_index = rank_order.iter().position(|&r| r == card.rank).unwrap();
+        let target_index = rank_order.iter().position(|&r| r == target.rank).unwrap();
+
+        card_index + 1 == target_index && card.suit != target.suit
+    }
+
+    fn is_valid_foundation_move(card: &Card, target: &Card) -> bool {
+        let rank_order = vec!["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
+        let card_index = rank_order.iter().position(|&r| r == card.rank).unwrap();
+        let target_index = rank_order.iter().position(|&r| r == target.rank).unwrap();
+
+        card_index == target_index + 1 && card.suit == target.suit
     }
 }
 

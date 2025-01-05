@@ -75,7 +75,7 @@ struct GameState {
     tableau: Vec<Vec<Card>>, // 7 tableau piles
     foundation: Vec<Vec<Card>>, // 4 foundation piles
     stock: Vec<Card>,
-    discard: Option<Card>, // Add this to the `GameState` struct
+    discard: Vec<Card>, // Discard pile
     selected_card: Option<(Card, usize, usize)>, // (Card, source pile index, source type)
     dragging_card: Option<(Vec<Card>, f64, f64, usize, usize)>, // Vec<Card> to store multiple cards
     canvas: HtmlCanvasElement,
@@ -100,7 +100,7 @@ impl GameState {
     fn new(ctx: CanvasRenderingContext2d, canvas: HtmlCanvasElement) -> Self {
         let mut deck = GameState::create_deck();
         deck.shuffle(&mut thread_rng());
-
+    
         let mut tableau = vec![vec![]; 7];
         for i in 0..7 {
             for j in 0..=i {
@@ -109,19 +109,19 @@ impl GameState {
                 tableau[i].push(card);
             }
         }
-
+    
         GameState {
             tableau,
             foundation: vec![vec![]; 4],
             stock: deck,
-            discard: None,
+            discard: Vec::new(), // Initialize as an empty vector
             selected_card: None,
             dragging_card: None,
             canvas,
             ctx,
         }
     }
-
+    
     fn render(&mut self) {
         self.ctx.clear_rect(0.0, 0.0, self.canvas.width() as f64, self.canvas.height() as f64);
     
@@ -142,7 +142,7 @@ impl GameState {
                 card.draw(&self.ctx);
             } else {
                 // Draw empty foundation slots
-                self.ctx.set_stroke_style(&JsValue::from_str("black"));
+                self.ctx.set_stroke_style(&"black".into());
                 self.ctx.set_line_width(2.0);
                 self.ctx.stroke_rect(
                     PILE_GAP + 3.0 * CARD_WIDTH + (i as f64 * (CARD_WIDTH + PILE_GAP)),
@@ -162,13 +162,13 @@ impl GameState {
             }
         } else {
             // Draw an empty stock pile placeholder
-            self.ctx.set_stroke_style(&JsValue::from_str("black"));
+            self.ctx.set_stroke_style(&"black".into());
             self.ctx.set_line_width(2.0);
             self.ctx.stroke_rect(PILE_GAP, PILE_GAP, CARD_WIDTH, CARD_HEIGHT);
         }
     
         // Render discard pile
-        if let Some(card) = &self.discard {
+        if let Some(card) = self.discard.last() {
             let mut card = card.clone();
             card.x = PILE_GAP + CARD_WIDTH + PILE_GAP;
             card.y = PILE_GAP;
@@ -182,70 +182,57 @@ impl GameState {
             }
         }
     }
-    
+                
     fn handle_stock_click(&mut self) {
         if let Some(mut card) = self.stock.pop() {
             // Flip the top card and move it to the discard pile
             card.face_up = true;
-            self.discard = Some(card); // Place the revealed card in the discard pile
+            self.discard.push(card); // Add card to the discard pile
             self.render();
-        } else {
-            // Recycle the discard pile back to the stock pile
-            if self.discard.is_some() {
-                let mut recycled_cards = vec![self.discard.take().unwrap()]; // Start with the discard card
-                while let Some(card) = self.stock.pop() {
-                    recycled_cards.push(card); // Collect remaining cards from stock
-                }
-    
-                // Flip all cards face-down and return them to the stock pile
-                for mut card in recycled_cards.into_iter().rev() {
-                    card.face_up = false;
-                    self.stock.push(card);
-                }
-    
-                self.discard = None; // Clear the discard pile
+        } else if !self.discard.is_empty() {
+            // Recycle the discard pile back into the stock pile
+            while let Some(mut card) = self.discard.pop() {
+                card.face_up = false; // Flip the card face-down
+                self.stock.push(card); // Move to the stock pile
             }
-            self.render();
+            self.render(); // Ensure proper rendering
         }
     }
-        
+     
     fn handle_mousedown(&mut self, x: f64, y: f64) {
-        // Check the discard pile first
-        if let Some(card) = &self.discard {
+        // Check the stock pile (whether it has cards or is empty)
+        if x >= PILE_GAP && x <= PILE_GAP + CARD_WIDTH && y >= PILE_GAP && y <= PILE_GAP + CARD_HEIGHT {
+            self.handle_stock_click(); // Trigger stock pile logic
+            return;
+        }
+    
+        // Check the discard pile
+        if let Some(card) = self.discard.last() {
             let discard_x = PILE_GAP + CARD_WIDTH + PILE_GAP;
             let discard_y = PILE_GAP;
             if x >= discard_x && x <= discard_x + CARD_WIDTH && y >= discard_y && y <= discard_y + CARD_HEIGHT {
-                // Drag the card from the discard pile
-                self.dragging_card = Some((vec![card.clone()], x - card.x, y - card.y, 0, 1)); // 1 indicates the discard pile
-                self.discard = None; // Temporarily remove the card from the discard pile
+                self.dragging_card = Some((vec![card.clone()], x - card.x, y - card.y, 0, 1)); // 1 indicates discard pile
+                self.discard.pop(); // Remove card from the discard pile
                 self.render();
                 return;
             }
         }
     
-        // Check the stock pile
-        if self.stock.last().map_or(false, |card| card.contains(x, y)) {
-            self.handle_stock_click();
-            return;
-        }
-    
         // Check tableau piles
         for (pile_idx, pile) in self.tableau.iter_mut().enumerate() {
-            // Find the index of the clicked card
             if let Some(card_idx) = pile.iter().position(|card| card.contains(x, y)) {
                 if pile[card_idx].face_up {
-                    // Select all face-up cards starting from the clicked card
-                    let cards_to_drag = pile.split_off(card_idx); // Remove the selected cards from the tableau
+                    let cards_to_drag = pile.split_off(card_idx); // Remove selected cards
                     let offset_x = x - cards_to_drag[0].x;
                     let offset_y = y - cards_to_drag[0].y;
-                    self.dragging_card = Some((cards_to_drag, offset_x, offset_y, pile_idx, 0)); // Store them for dragging
+                    self.dragging_card = Some((cards_to_drag, offset_x, offset_y, pile_idx, 0)); // Store dragging info
                     self.render();
                 }
                 return;
             }
         }
     }
-        
+                  
     fn handle_mousemove(&mut self, x: f64, y: f64) {
         if let Some((ref mut cards, offset_x, offset_y, _, _)) = self.dragging_card {
             for (i, card) in cards.iter_mut().enumerate() {
@@ -268,7 +255,7 @@ impl GameState {
                 // Return the cards to their original location
                 match pile_type {
                     0 => self.tableau[pile_idx].extend(cards), // Return to tableau pile
-                    1 => self.discard = Some(cards.pop().unwrap()), // Return the top card to the discard pile
+                    1 => self.discard.push(cards.pop().unwrap()), // Return the top card to the discard pile
                     _ => {}
                 }
             }

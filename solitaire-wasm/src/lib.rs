@@ -69,9 +69,8 @@ struct GameState {
     tableau: Vec<Vec<Card>>, // 7 tableau piles
     foundation: Vec<Vec<Card>>, // 4 foundation piles
     stock: Vec<Card>,
-    waste: Vec<Card>,
     selected_card: Option<(Card, usize, usize)>, // (Card, source pile index, source type)
-    dragging_card: Option<(Card, f64, f64)>, // (Card, mouse offset X, mouse offset Y)
+    dragging_card: Option<(Card, f64, f64, usize, usize)>, // (Card, mouse offset X, mouse offset Y, original pile index, original pile type)
     canvas: HtmlCanvasElement,
     ctx: CanvasRenderingContext2d,
 }
@@ -108,7 +107,6 @@ impl GameState {
             tableau,
             foundation: vec![vec![]; 4],
             stock: deck,
-            waste: vec![],
             selected_card: None,
             dragging_card: None,
             canvas,
@@ -141,36 +139,26 @@ impl GameState {
         }
 
         // Render stock
-        if let Some(card) = self.stock.last() {
-            card.draw(&self.ctx);
-        }
-
-        // Render waste
-        for (i, card) in self.waste.iter_mut().enumerate() {
-            card.x = 140.0 + i as f64 * 20.0;
+        if let Some(card) = self.stock.last_mut() {
+            card.x = 20.0;
             card.y = 20.0;
             card.draw(&self.ctx);
         }
+    }
 
-        // Highlight selected card
-        if let Some((card, _, _)) = &self.selected_card {
-            #[allow(deprecated)]
-            self.ctx.set_stroke_style(&JsValue::from_str("yellow"));
-            self.ctx.set_line_width(3.0);
-            self.ctx.stroke_rect(card.x, card.y, card.width, card.height);
+    fn handle_stock_click(&mut self) {
+        if let Some(card) = self.stock.last_mut() {
+            card.face_up = true;
+            self.render();
         }
     }
 
     fn handle_mousedown(&mut self, x: f64, y: f64) {
-        // Check if a card is clicked in tableau piles
+        // Check tableau piles
         for (pile_idx, pile) in self.tableau.iter_mut().enumerate() {
             if let Some(card) = pile.last() {
                 if card.contains(x, y) {
-                    self.dragging_card = Some((
-                        card.clone(),
-                        x - card.x,
-                        y - card.y,
-                    ));
+                    self.dragging_card = Some((card.clone(), x - card.x, y - card.y, pile_idx, 0));
                     pile.pop();
                     self.render();
                     return;
@@ -180,7 +168,7 @@ impl GameState {
     }
 
     fn handle_mousemove(&mut self, x: f64, y: f64) {
-        if let Some((ref mut card, offset_x, offset_y)) = self.dragging_card {
+        if let Some((ref mut card, offset_x, offset_y, _, _)) = self.dragging_card {
             card.x = x - offset_x;
             card.y = y - offset_y;
             self.render();
@@ -188,16 +176,30 @@ impl GameState {
     }
 
     fn handle_mouseup(&mut self, x: f64, y: f64) {
-        if let Some((card, _, _)) = self.dragging_card.take() {
-            // Example logic to drop card on tableau pile
-            for (pile_idx, pile) in self.tableau.iter_mut().enumerate() {
-                if pile.last().map_or(true, |last_card| last_card.contains(x, y)) {
-                    pile.push(card);
-                    self.render();
-                    return;
+        if let Some((card, _, _, pile_idx, pile_type)) = self.dragging_card.take() {
+            let valid_drop = self.try_drop_card(&card, x, y);
+
+            if !valid_drop {
+                match pile_type {
+                    0 => self.tableau[pile_idx].push(card),
+                    _ => {}
                 }
             }
+            self.render();
         }
+    }
+
+    fn try_drop_card(&mut self, card: &Card, x: f64, y: f64) -> bool {
+        // Check tableau piles for valid drop
+        for pile in self.tableau.iter_mut() {
+            if pile.last().map_or(true, |last_card| last_card.contains(x, y)) {
+                pile.push(card.clone());
+                return true;
+            }
+        }
+
+        // Check foundation piles for valid drop (add rules for foundation here if needed)
+        false
     }
 }
 

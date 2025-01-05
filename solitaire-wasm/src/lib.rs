@@ -156,7 +156,7 @@ impl GameState {
             card.y = 20.0;
             card.draw(&self.ctx);
         }
-    
+
         // Render dragged cards
         if let Some((ref cards, _, _, _, _)) = self.dragging_card {
             for card in cards {
@@ -164,8 +164,6 @@ impl GameState {
             }
         }
     }
-    
-        
 
     fn handle_stock_click(&mut self) {
         if let Some(mut card) = self.stock.pop() {
@@ -173,24 +171,21 @@ impl GameState {
             self.discard = Some(card); // Place the revealed card in the discard area
             self.render();
         } else {
-            // Reset the stock by flipping cards from the discard pile
-            while let Some(card) = self.discard.take() {
-                let mut flipped_card = card.clone();
-                flipped_card.face_up = false;
-                self.stock.push(flipped_card);
+            // Recycle the discard pile back to the stock pile
+            if let Some(card) = self.discard.take() {
+                let mut cards = vec![card];
+                cards.extend(self.stock.drain(..).rev()); // Reverse discard pile to stock
+                for mut card in cards {
+                    card.face_up = false; // Flip the cards face down
+                    self.stock.push(card);
+                }
             }
             self.render();
         }
-    }    
-
+    }
+      
     fn handle_mousedown(&mut self, x: f64, y: f64) {
-        // Check stock pile
-        if self.stock.last().map_or(false, |card| card.contains(x, y)) {
-            self.handle_stock_click();
-            return;
-        }
-    
-        // Check discard pile
+        // Check discard pile first
         if let Some(card) = &self.discard {
             if card.contains(x, y) {
                 // Drag the card from the discard pile
@@ -201,21 +196,29 @@ impl GameState {
             }
         }
     
+        // Check stock pile
+        if self.stock.last().map_or(false, |card| card.contains(x, y)) {
+            self.handle_stock_click();
+            return;
+        }
+    
         // Check tableau piles
         for (pile_idx, pile) in self.tableau.iter_mut().enumerate() {
-            // Find the index of the clicked card without mutating the pile
-            if let Some(card_idx) = pile.iter().position(|card| card.contains(x, y) && card.face_up) {
-                // Split the pile to select the cards to drag
-                let cards_to_drag = pile.split_off(card_idx); // Remove the selected cards from the tableau
-                let offset_x = x - cards_to_drag[0].x;
-                let offset_y = y - cards_to_drag[0].y;
-                self.dragging_card = Some((cards_to_drag, offset_x, offset_y, pile_idx, 0)); // Store them for dragging
-                self.render();
+            // Find the index of the clicked card
+            if let Some(card_idx) = pile.iter().position(|card| card.contains(x, y)) {
+                if pile[card_idx].face_up {
+                    // Select all face-up cards starting from the clicked card
+                    let cards_to_drag = pile.split_off(card_idx); // Remove the selected cards from the tableau
+                    let offset_x = x - cards_to_drag[0].x;
+                    let offset_y = y - cards_to_drag[0].y;
+                    self.dragging_card = Some((cards_to_drag, offset_x, offset_y, pile_idx, 0)); // Store them for dragging
+                    self.render();
+                }
                 return;
             }
         }
     }
-      
+    
     fn handle_mousemove(&mut self, x: f64, y: f64) {
         if let Some((ref mut cards, offset_x, offset_y, _, _)) = self.dragging_card {
             for (i, card) in cards.iter_mut().enumerate() {
@@ -225,7 +228,7 @@ impl GameState {
             self.render();
         }
     }
-
+    
     fn handle_mouseup(&mut self, x: f64, y: f64) {
         if let Some((mut cards, _, _, pile_idx, pile_type)) = self.dragging_card.take() {
             let valid_drop = if cards.len() == 1 {

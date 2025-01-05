@@ -284,11 +284,15 @@ impl GameState {
             }
     
             self.render();
+    
+            // Check for a win after every move
+            if self.check_game_won() {
+                self.celebrate_win(); // Trigger win celebration
+            }
         }
     }
-    
-    
-    fn try_drop_card(&mut self, card: &Card, x: f64, y: f64) -> bool {
+       
+    fn try_drop_card(&mut self, card: &Card, _x: f64, _y: f64) -> bool {
         // Check foundation piles first for valid drop
         for pile in self.foundation.iter_mut() {
             if pile.last().map_or(card.rank == "A", |last_card| Self::is_valid_foundation_move(card, last_card)) {
@@ -317,7 +321,7 @@ impl GameState {
         false // Return false if no valid drop is found
     }
     
-    fn try_drop_stack(&mut self, cards: &[Card], x: f64, y: f64) -> bool {
+    fn try_drop_stack(&mut self, cards: &[Card], _x: f64, _y: f64) -> bool {
         for pile in self.tableau.iter_mut() {
             if pile.is_empty() {
                 // Only allow Kings to be placed in an empty tableau pile
@@ -355,6 +359,65 @@ impl GameState {
 
         card_index == target_index + 1 && card.suit == target.suit
     }
+
+    fn check_game_won(&self) -> bool {
+        // Check if all cards are in the foundation piles
+        self.foundation.iter().all(|pile| pile.len() == 13) // 13 cards per foundation pile
+    }
+
+    fn celebrate_win(&self) {
+        // Clear the canvas
+        self.ctx.clear_rect(0.0, 0.0, self.canvas.width() as f64, self.canvas.height() as f64);
+    
+        // Draw initial "You Win!" text
+        self.ctx.set_font("48px Arial");
+        self.ctx.set_fill_style(&"gold".into());
+        self.ctx
+            .fill_text(
+                "🎉 You Win! 🎉",
+                self.canvas.width() as f64 / 2.0 - 120.0,
+                self.canvas.height() as f64 / 2.0,
+            )
+            .unwrap();
+    
+        // Add fade-out animation
+        let ctx = self.ctx.clone();
+        let canvas = self.canvas.clone();
+        let mut opacity = 1.0;
+    
+        let closure: Rc<RefCell<Option<Closure<dyn FnMut()>>>> = Rc::new(RefCell::new(None)); // Specify the type explicitly
+        let closure_clone = closure.clone();
+    
+        *closure.borrow_mut() = Some(Closure::wrap(Box::new(move || {
+            if opacity > 0.0 {
+                ctx.clear_rect(0.0, 0.0, canvas.width() as f64, canvas.height() as f64);
+                ctx.set_global_alpha(opacity);
+                ctx.set_font("48px Arial");
+                ctx.set_fill_style(&"gold".into());
+                ctx.fill_text(
+                    "🎉 You Win! 🎉",
+                    canvas.width() as f64 / 2.0 - 120.0,
+                    canvas.height() as f64 / 2.0,
+                )
+                .unwrap();
+                opacity -= 0.02; // Gradually reduce opacity
+                window()
+                    .unwrap()
+                    .request_animation_frame(
+                        closure_clone.borrow().as_ref().unwrap().as_ref().unchecked_ref(),
+                    )
+                    .unwrap();
+            } else {
+                // Reset global alpha for further rendering
+                ctx.set_global_alpha(1.0);
+            }
+        }) as Box<dyn FnMut()>));
+    
+        window()
+            .unwrap()
+            .request_animation_frame(closure.borrow().as_ref().unwrap().as_ref().unchecked_ref())
+            .unwrap();
+    }      
 }
 
 #[wasm_bindgen]

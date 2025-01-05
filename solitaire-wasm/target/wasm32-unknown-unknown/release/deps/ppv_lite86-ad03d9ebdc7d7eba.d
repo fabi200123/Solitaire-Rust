@@ -1,0 +1,10 @@
+C:\Users\fabi2\Desktop\Side Projects\ATAD-Project\solitaire-wasm\target\wasm32-unknown-unknown\release\deps\libppv_lite86-ad03d9ebdc7d7eba.rmeta: C:\Users\fabi2\.cargo\registry\src\index.crates.io-6f17d22bba15001f\ppv-lite86-0.2.20\src/lib.rs C:\Users\fabi2\.cargo\registry\src\index.crates.io-6f17d22bba15001f\ppv-lite86-0.2.20\src\soft.rs C:\Users\fabi2\.cargo\registry\src\index.crates.io-6f17d22bba15001f\ppv-lite86-0.2.20\src\types.rs C:\Users\fabi2\.cargo\registry\src\index.crates.io-6f17d22bba15001f\ppv-lite86-0.2.20\src\generic.rs
+
+C:\Users\fabi2\Desktop\Side Projects\ATAD-Project\solitaire-wasm\target\wasm32-unknown-unknown\release\deps\libppv_lite86-ad03d9ebdc7d7eba.rlib: C:\Users\fabi2\.cargo\registry\src\index.crates.io-6f17d22bba15001f\ppv-lite86-0.2.20\src/lib.rs C:\Users\fabi2\.cargo\registry\src\index.crates.io-6f17d22bba15001f\ppv-lite86-0.2.20\src\soft.rs C:\Users\fabi2\.cargo\registry\src\index.crates.io-6f17d22bba15001f\ppv-lite86-0.2.20\src\types.rs C:\Users\fabi2\.cargo\registry\src\index.crates.io-6f17d22bba15001f\ppv-lite86-0.2.20\src\generic.rs
+
+C:\Users\fabi2\Desktop\Side Projects\ATAD-Project\solitaire-wasm\target\wasm32-unknown-unknown\release\deps\ppv_lite86-ad03d9ebdc7d7eba.d: C:\Users\fabi2\.cargo\registry\src\index.crates.io-6f17d22bba15001f\ppv-lite86-0.2.20\src/lib.rs C:\Users\fabi2\.cargo\registry\src\index.crates.io-6f17d22bba15001f\ppv-lite86-0.2.20\src\soft.rs C:\Users\fabi2\.cargo\registry\src\index.crates.io-6f17d22bba15001f\ppv-lite86-0.2.20\src\types.rs C:\Users\fabi2\.cargo\registry\src\index.crates.io-6f17d22bba15001f\ppv-lite86-0.2.20\src\generic.rs
+
+C:\Users\fabi2\.cargo\registry\src\index.crates.io-6f17d22bba15001f\ppv-lite86-0.2.20\src/lib.rs:
+C:\Users\fabi2\.cargo\registry\src\index.crates.io-6f17d22bba15001f\ppv-lite86-0.2.20\src\soft.rs:
+C:\Users\fabi2\.cargo\registry\src\index.crates.io-6f17d22bba15001f\ppv-lite86-0.2.20\src\types.rs:
+C:\Users\fabi2\.cargo\registry\src\index.crates.io-6f17d22bba15001f\ppv-lite86-0.2.20\src\generic.rs:

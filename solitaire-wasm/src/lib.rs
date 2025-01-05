@@ -11,6 +11,12 @@ use rand::thread_rng;
 use std::rc::Rc;
 use std::cell::RefCell;
 
+const CARD_WIDTH: f64 = 120.0;
+const CARD_HEIGHT: f64 = 180.0;
+const PILE_GAP: f64 = 20.0;
+const CANVAS_WIDTH: f64 = 7.0 * CARD_WIDTH + 8.0 * PILE_GAP; // 7 tableau piles + gaps
+const CANVAS_HEIGHT: f64 = 5.0 * CARD_HEIGHT; // Enough for stacked tableau cards
+
 #[derive(Debug, Clone)]
 struct Card {
     rank: String,
@@ -30,8 +36,8 @@ impl Card {
             face_up: false,
             x: 0.0,
             y: 0.0,
-            width: 100.0,
-            height: 150.0,
+            width: CARD_WIDTH,
+            height: CARD_HEIGHT,
         }
     }
 
@@ -122,8 +128,8 @@ impl GameState {
         // Render tableau piles
         for (i, pile) in self.tableau.iter_mut().enumerate() {
             for (j, card) in pile.iter_mut().enumerate() {
-                card.x = 20.0 + i as f64 * 120.0;
-                card.y = 200.0 + j as f64 * 30.0;
+                card.x = PILE_GAP + i as f64 * (CARD_WIDTH + PILE_GAP);
+                card.y = 200.0 + j as f64 * 30.0; // Vertical stacking
                 card.draw(&self.ctx);
             }
         }
@@ -131,32 +137,44 @@ impl GameState {
         // Render foundation piles
         for (i, pile) in self.foundation.iter_mut().enumerate() {
             if let Some(card) = pile.last_mut() {
-                card.x = 500.0 + i as f64 * 120.0;
-                card.y = 20.0;
+                card.x = PILE_GAP + 3.0 * CARD_WIDTH + (i as f64 * (CARD_WIDTH + PILE_GAP));
+                card.y = PILE_GAP;
                 card.draw(&self.ctx);
             } else {
-                #[allow(deprecated)]
+                // Draw empty foundation slots
                 self.ctx.set_stroke_style(&JsValue::from_str("black"));
                 self.ctx.set_line_width(2.0);
-                self.ctx.stroke_rect(500.0 + i as f64 * 120.0, 20.0, 100.0, 150.0);
+                self.ctx.stroke_rect(
+                    PILE_GAP + 3.0 * CARD_WIDTH + (i as f64 * (CARD_WIDTH + PILE_GAP)),
+                    PILE_GAP,
+                    CARD_WIDTH,
+                    CARD_HEIGHT,
+                );
             }
         }
     
-        // Render stock
-        if let Some(card) = self.stock.last_mut() {
-            card.x = 20.0;
-            card.y = 20.0;
-            card.draw(&self.ctx);
+        // Render stock pile
+        if !self.stock.is_empty() {
+            if let Some(card) = self.stock.last_mut() {
+                card.x = PILE_GAP;
+                card.y = PILE_GAP;
+                card.draw(&self.ctx);
+            }
+        } else {
+            // Draw an empty stock pile placeholder
+            self.ctx.set_stroke_style(&JsValue::from_str("black"));
+            self.ctx.set_line_width(2.0);
+            self.ctx.stroke_rect(PILE_GAP, PILE_GAP, CARD_WIDTH, CARD_HEIGHT);
         }
     
         // Render discard pile
         if let Some(card) = &self.discard {
             let mut card = card.clone();
-            card.x = 140.0; // Position next to the stock pile
-            card.y = 20.0;
+            card.x = PILE_GAP + CARD_WIDTH + PILE_GAP;
+            card.y = PILE_GAP;
             card.draw(&self.ctx);
         }
-
+    
         // Render dragged cards
         if let Some((ref cards, _, _, _, _)) = self.dragging_card {
             for card in cards {
@@ -164,30 +182,39 @@ impl GameState {
             }
         }
     }
-
+    
     fn handle_stock_click(&mut self) {
         if let Some(mut card) = self.stock.pop() {
+            // Flip the top card and move it to the discard pile
             card.face_up = true;
-            self.discard = Some(card); // Place the revealed card in the discard area
+            self.discard = Some(card); // Place the revealed card in the discard pile
             self.render();
         } else {
             // Recycle the discard pile back to the stock pile
-            if let Some(card) = self.discard.take() {
-                let mut cards = vec![card];
-                cards.extend(self.stock.drain(..).rev()); // Reverse discard pile to stock
-                for mut card in cards {
-                    card.face_up = false; // Flip the cards face down
+            if self.discard.is_some() {
+                let mut recycled_cards = vec![self.discard.take().unwrap()]; // Start with the discard card
+                while let Some(card) = self.stock.pop() {
+                    recycled_cards.push(card); // Collect remaining cards from stock
+                }
+    
+                // Flip all cards face-down and return them to the stock pile
+                for mut card in recycled_cards.into_iter().rev() {
+                    card.face_up = false;
                     self.stock.push(card);
                 }
+    
+                self.discard = None; // Clear the discard pile
             }
             self.render();
         }
     }
-      
+        
     fn handle_mousedown(&mut self, x: f64, y: f64) {
-        // Check discard pile first
+        // Check the discard pile first
         if let Some(card) = &self.discard {
-            if card.contains(x, y) {
+            let discard_x = PILE_GAP + CARD_WIDTH + PILE_GAP;
+            let discard_y = PILE_GAP;
+            if x >= discard_x && x <= discard_x + CARD_WIDTH && y >= discard_y && y <= discard_y + CARD_HEIGHT {
                 // Drag the card from the discard pile
                 self.dragging_card = Some((vec![card.clone()], x - card.x, y - card.y, 0, 1)); // 1 indicates the discard pile
                 self.discard = None; // Temporarily remove the card from the discard pile
@@ -196,7 +223,7 @@ impl GameState {
             }
         }
     
-        // Check stock pile
+        // Check the stock pile
         if self.stock.last().map_or(false, |card| card.contains(x, y)) {
             self.handle_stock_click();
             return;
@@ -218,7 +245,7 @@ impl GameState {
             }
         }
     }
-    
+        
     fn handle_mousemove(&mut self, x: f64, y: f64) {
         if let Some((ref mut cards, offset_x, offset_y, _, _)) = self.dragging_card {
             for (i, card) in cards.iter_mut().enumerate() {
@@ -331,6 +358,11 @@ pub fn start() -> Result<(), JsValue> {
         .get_element_by_id("gameCanvas")
         .unwrap()
         .dyn_into::<HtmlCanvasElement>()?;
+
+    // Set the canvas size to match the calculated dimensions
+    canvas.set_width(CANVAS_WIDTH as u32);
+    canvas.set_height(CANVAS_HEIGHT as u32);
+
     let ctx = canvas
         .get_context("2d")?
         .unwrap()

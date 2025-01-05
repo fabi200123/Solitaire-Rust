@@ -69,6 +69,7 @@ struct GameState {
     tableau: Vec<Vec<Card>>, // 7 tableau piles
     foundation: Vec<Vec<Card>>, // 4 foundation piles
     stock: Vec<Card>,
+    discard: Option<Card>, // Add this to the `GameState` struct
     selected_card: Option<(Card, usize, usize)>, // (Card, source pile index, source type)
     dragging_card: Option<(Card, f64, f64, usize, usize)>, // (Card, mouse offset X, mouse offset Y, original pile index, original pile type)
     canvas: HtmlCanvasElement,
@@ -107,6 +108,7 @@ impl GameState {
             tableau,
             foundation: vec![vec![]; 4],
             stock: deck,
+            discard: None,
             selected_card: None,
             dragging_card: None,
             canvas,
@@ -146,24 +148,32 @@ impl GameState {
             card.y = 20.0;
             card.draw(&self.ctx);
         }
+
+        // Render discard pile
+        if let Some(card) = &self.discard {
+            let mut card = card.clone();
+            card.x = 140.0;
+            card.y = 20.0;
+            card.draw(&self.ctx);
+        }
     }
         
 
     fn handle_stock_click(&mut self) {
         if let Some(mut card) = self.stock.pop() {
             card.face_up = true;
-            self.tableau[0].push(card); // Temporarily place it for visibility
+            self.discard = Some(card); // Place the revealed card in the discard area
             self.render();
         } else {
-            // Reset the stock by flipping over cards from the tableau's first pile
-            while let Some(card) = self.tableau[0].pop() {
+            // Reset the stock by flipping cards from the discard pile
+            while let Some(card) = self.discard.take() {
                 let mut flipped_card = card.clone();
                 flipped_card.face_up = false;
                 self.stock.push(flipped_card);
             }
             self.render();
         }
-    }
+    }    
 
     fn handle_mousedown(&mut self, x: f64, y: f64) {
         // Check stock pile
@@ -172,12 +182,22 @@ impl GameState {
             return;
         }
     
+        // Check discard pile
+        if let Some(card) = &self.discard {
+            if card.contains(x, y) {
+                self.dragging_card = Some((card.clone(), x - card.x, y - card.y, 0, 1));
+                self.discard = None; // Remove the card from the discard pile
+                self.render();
+                return;
+            }
+        }
+    
         // Check tableau piles
         for (pile_idx, pile) in self.tableau.iter_mut().enumerate() {
             if let Some(card) = pile.last() {
                 if card.contains(x, y) {
                     self.dragging_card = Some((card.clone(), x - card.x, y - card.y, pile_idx, 0));
-                    pile.pop();
+                    pile.pop(); // Remove the card from the tableau pile
                     self.render();
                     return;
                 }
@@ -196,19 +216,20 @@ impl GameState {
     fn handle_mouseup(&mut self, x: f64, y: f64) {
         if let Some((card, _, _, pile_idx, pile_type)) = self.dragging_card.take() {
             let valid_drop = self.try_drop_card(&card, x, y);
-
+    
             if !valid_drop {
                 match pile_type {
-                    0 => self.tableau[pile_idx].push(card),
+                    0 => self.tableau[pile_idx].push(card), // Return to tableau
+                    1 => self.discard = Some(card),        // Return to discard pile
                     _ => {}
                 }
             }
-
-            // Turn face-up the last card in the pile
+    
+            // Turn face-up the last card in the tableau pile
             if let Some(last_card) = self.tableau[pile_idx].last_mut() {
                 last_card.face_up = true;
             }
-
+    
             self.render();
         }
     }
@@ -231,14 +252,18 @@ impl GameState {
         }
     
         false
-    }     
+    }
+
+    fn is_red(card: &Card) -> bool {
+        card.suit == "hearts" || card.suit == "diamonds"
+    }
 
     fn is_valid_tableau_move(card: &Card, target: &Card) -> bool {
         let rank_order = vec!["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
         let card_index = rank_order.iter().position(|&r| r == card.rank).unwrap();
         let target_index = rank_order.iter().position(|&r| r == target.rank).unwrap();
-
-        card_index + 1 == target_index && card.suit != target.suit
+    
+        card_index + 1 == target_index && Self::is_red(card) != Self::is_red(target)
     }
 
     fn is_valid_foundation_move(card: &Card, target: &Card) -> bool {

@@ -6,16 +6,16 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, HtmlImageElement, MouseEvent, window};
 use wasm_bindgen::closure::Closure;
-use rand::seq::SliceRandom;
 use rand::thread_rng;
+use rand::seq::SliceRandom;
 use std::rc::Rc;
 use std::cell::RefCell;
 
-const CARD_WIDTH: f64 = 120.0;
-const CARD_HEIGHT: f64 = 180.0;
-const PILE_GAP: f64 = 20.0;
-const CANVAS_WIDTH: f64 = 7.0 * CARD_WIDTH + 8.0 * PILE_GAP; // 7 tableau piles + gaps
-const CANVAS_HEIGHT: f64 = 5.0 * CARD_HEIGHT; // Enough for stacked tableau cards
+const CARD_WIDTH: f64 = 100.0;
+const CARD_HEIGHT: f64 = 150.0;
+const PILE_GAP: f64 = 50.0;
+const CANVAS_WIDTH: f64 = 7.0 * CARD_WIDTH + 20.0 * PILE_GAP; // 7 tableau piles + gaps
+const CANVAS_HEIGHT: f64 = 5.0 * CARD_HEIGHT + 10.0 * PILE_GAP; // Enough for stacked tableau cards
 
 #[derive(Debug, Clone)]
 struct Card {
@@ -83,6 +83,11 @@ struct GameState {
 }
 
 impl GameState {
+    fn draw_background(&self) {
+        self.ctx.set_fill_style(&"green".into());
+        self.ctx.fill_rect(0.0, 0.0, self.canvas.width() as f64, self.canvas.height() as f64);
+    }
+
     fn create_deck() -> Vec<Card> {
         let suits = vec!["hearts", "diamonds", "clubs", "spades"];
         let ranks = vec!["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
@@ -105,7 +110,7 @@ impl GameState {
         for i in 0..7 {
             for j in 0..=i {
                 let mut card = deck.pop().unwrap();
-                card.face_up = j == i;
+                card.face_up = j == i; // Only the top card in each pile is face-up
                 tableau[i].push(card);
             }
         }
@@ -114,22 +119,23 @@ impl GameState {
             tableau,
             foundation: vec![vec![]; 4],
             stock: deck,
-            discard: Vec::new(), // Initialize as an empty vector
+            discard: Vec::new(),
             selected_card: None,
             dragging_card: None,
             canvas,
             ctx,
         }
-    }
+    }       
     
     fn render(&mut self) {
         self.ctx.clear_rect(0.0, 0.0, self.canvas.width() as f64, self.canvas.height() as f64);
+        self.draw_background();
     
-        // Render tableau piles
+        // Render tableau piles with increased vertical spacing
         for (i, pile) in self.tableau.iter_mut().enumerate() {
             for (j, card) in pile.iter_mut().enumerate() {
                 card.x = PILE_GAP + i as f64 * (CARD_WIDTH + PILE_GAP);
-                card.y = 200.0 + j as f64 * 30.0; // Vertical stacking
+                card.y = 200.0 + j as f64 * 60.0 + 50.0;
                 card.draw(&self.ctx);
             }
         }
@@ -137,15 +143,15 @@ impl GameState {
         // Render foundation piles
         for (i, pile) in self.foundation.iter_mut().enumerate() {
             if let Some(card) = pile.last_mut() {
-                card.x = PILE_GAP + 3.0 * CARD_WIDTH + (i as f64 * (CARD_WIDTH + PILE_GAP));
+                card.x = PILE_GAP + 4.5 * CARD_WIDTH + (i as f64 * (CARD_WIDTH + PILE_GAP));
                 card.y = PILE_GAP;
                 card.draw(&self.ctx);
             } else {
                 // Draw empty foundation slots
-                self.ctx.set_stroke_style(&"black".into());
+                self.ctx.set_stroke_style(&JsValue::from_str("black"));
                 self.ctx.set_line_width(2.0);
                 self.ctx.stroke_rect(
-                    PILE_GAP + 3.0 * CARD_WIDTH + (i as f64 * (CARD_WIDTH + PILE_GAP)),
+                    PILE_GAP + 4.5 * CARD_WIDTH + (i as f64 * (CARD_WIDTH + PILE_GAP)),
                     PILE_GAP,
                     CARD_WIDTH,
                     CARD_HEIGHT,
@@ -161,28 +167,21 @@ impl GameState {
                 card.draw(&self.ctx);
             }
         } else {
-            // Draw an empty stock pile placeholder
-            self.ctx.set_stroke_style(&"black".into());
+            // Draw empty stock pile placeholder
+            self.ctx.set_stroke_style(&JsValue::from_str("black"));
             self.ctx.set_line_width(2.0);
             self.ctx.stroke_rect(PILE_GAP, PILE_GAP, CARD_WIDTH, CARD_HEIGHT);
         }
     
         // Render discard pile
         if let Some(card) = self.discard.last() {
-            let mut card = card.clone();
+            let mut card = card.clone(); // Clone the last card to modify its position
             card.x = PILE_GAP + CARD_WIDTH + PILE_GAP;
             card.y = PILE_GAP;
             card.draw(&self.ctx);
         }
-    
-        // Render dragged cards
-        if let Some((ref cards, _, _, _, _)) = self.dragging_card {
-            for card in cards {
-                card.draw(&self.ctx);
-            }
-        }
     }
-                
+                    
     fn handle_stock_click(&mut self) {
         if let Some(mut card) = self.stock.pop() {
             // Flip the top card and move it to the discard pile
@@ -250,13 +249,23 @@ impl GameState {
                   
     fn handle_mousemove(&mut self, x: f64, y: f64) {
         if let Some((ref mut cards, offset_x, offset_y, _, _)) = self.dragging_card {
+            // Clear the previous position of the dragged cards
+            for card in cards.iter() {
+                self.ctx.clear_rect(card.x, card.y, CARD_WIDTH, CARD_HEIGHT);
+            }
+    
+            // Update the position of the dragged cards
             for (i, card) in cards.iter_mut().enumerate() {
                 card.x = x - offset_x;
                 card.y = y - offset_y + i as f64 * 30.0; // Offset for stacked cards
             }
-            self.render();
+    
+            // Draw only the dragged cards at their new positions
+            for card in cards.iter() {
+                card.draw(&self.ctx);
+            }
         }
-    }    
+    }      
     
     fn handle_mouseup(&mut self, x: f64, y: f64) {
         if let Some((mut cards, _, _, pile_idx, pile_type)) = self.dragging_card.take() {
@@ -368,8 +377,8 @@ impl GameState {
     fn celebrate_win(&self) {
         // Clear the canvas
         self.ctx.clear_rect(0.0, 0.0, self.canvas.width() as f64, self.canvas.height() as f64);
-    
-        // Draw initial "You Win!" text
+
+        // Draw permanent "You Win!" text
         self.ctx.set_font("48px Arial");
         self.ctx.set_fill_style(&"gold".into());
         self.ctx

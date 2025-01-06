@@ -216,7 +216,7 @@ impl GameState {
         // Check the foundation piles
         for (pile_idx, pile) in self.foundation.iter_mut().enumerate() {
             if let Some(card) = pile.last() {
-                let foundation_x = PILE_GAP + 3.0 * CARD_WIDTH + (pile_idx as f64 * (CARD_WIDTH + PILE_GAP));
+                let foundation_x = PILE_GAP + 4.5 * CARD_WIDTH + (pile_idx as f64 * (CARD_WIDTH + PILE_GAP)); // Use the same coordinates as in `render`
                 let foundation_y = PILE_GAP;
                 if x >= foundation_x && x <= foundation_x + CARD_WIDTH && y >= foundation_y && y <= foundation_y + CARD_HEIGHT {
                     // Drag the card from the foundation pile
@@ -236,7 +236,7 @@ impl GameState {
     
         // Check the discard pile
         if let Some(card) = self.discard.last() {
-            let discard_x = PILE_GAP + CARD_WIDTH + PILE_GAP;
+            let discard_x = PILE_GAP + CARD_WIDTH + PILE_GAP; // Use the same coordinates as in `render`
             let discard_y = PILE_GAP;
             if x >= discard_x && x <= discard_x + CARD_WIDTH && y >= discard_y && y <= discard_y + CARD_HEIGHT {
                 self.dragging_card = Some((vec![card.clone()], x - card.x, y - card.y, 0, 1)); // 1 indicates discard pile

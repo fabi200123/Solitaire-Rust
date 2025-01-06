@@ -1,1 +1,0 @@
-C:\Users\fabi2\Desktop\Side\ Projects\ATAD-Project\solitaire-wasm\target\wasm32-unknown-unknown\release\solitaire_wasm.wasm: C:\Users\fabi2\Desktop\Side\ Projects\ATAD-Project\solitaire-wasm\src\lib.rs

@@ -174,11 +174,15 @@ impl GameState {
         }
     
         // Render discard pile
-        if let Some(card) = self.discard.last() {
-            let mut card = card.clone(); // Clone the last card to modify its position
-            card.x = PILE_GAP + CARD_WIDTH + PILE_GAP;
+        if let Some(card) = self.discard.last_mut() {
+            card.x = PILE_GAP + CARD_WIDTH + PILE_GAP; // Set to the visual discard pile location
             card.y = PILE_GAP;
             card.draw(&self.ctx);
+        } else {
+            // Draw empty discard pile placeholder
+            self.ctx.set_stroke_style(&JsValue::from_str("black"));
+            self.ctx.set_line_width(2.0);
+            self.ctx.stroke_rect(PILE_GAP + CARD_WIDTH + PILE_GAP, PILE_GAP, CARD_WIDTH, CARD_HEIGHT);
         }
     }
                     
@@ -235,12 +239,16 @@ impl GameState {
         }
     
         // Check the discard pile
-        if let Some(card) = self.discard.last() {
-            let discard_x = PILE_GAP + CARD_WIDTH + PILE_GAP; // Use the same coordinates as in `render`
+        if let Some(card) = self.discard.last_mut() {
+            let discard_x = PILE_GAP + CARD_WIDTH + PILE_GAP; // Use the same rendering coordinates
             let discard_y = PILE_GAP;
             if x >= discard_x && x <= discard_x + CARD_WIDTH && y >= discard_y && y <= discard_y + CARD_HEIGHT {
-                self.dragging_card = Some((vec![card.clone()], x - card.x, y - card.y, 0, 1)); // 1 indicates discard pile
-                self.discard.pop(); // Remove card from the discard pile
+                // Correct the card's position
+                card.x = discard_x;
+                card.y = discard_y;
+
+                self.dragging_card = Some((vec![card.clone()], x - card.x, y - card.y, 0, 1)); // Store drag info
+                self.discard.pop(); // Remove the card from the discard pile
                 self.render();
                 return;
             }

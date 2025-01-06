@@ -203,20 +203,6 @@ impl GameState {
     }
      
     fn handle_mousedown(&mut self, x: f64, y: f64) {
-        // Check tableau piles
-        for (pile_idx, pile) in self.tableau.iter_mut().enumerate() {
-            if let Some(card_idx) = pile.iter().position(|card| card.contains(x, y)) {
-                if pile[card_idx].face_up {
-                    let cards_to_drag = pile.split_off(card_idx); // Split off the dragged cards
-                    let offset_x = x - cards_to_drag[0].x;
-                    let offset_y = y - cards_to_drag[0].y;
-                    self.dragging_card = Some((cards_to_drag, offset_x, offset_y, pile_idx, 0)); // Store dragging info
-                    self.render();
-                }
-                return;
-            }
-        }
-
         // Check the foundation piles
         for (pile_idx, pile) in self.foundation.iter_mut().enumerate() {
             if let Some(card) = pile.last() {
@@ -229,6 +215,20 @@ impl GameState {
                     self.render();
                     return;
                 }
+            }
+        }
+
+        // Check tableau piles
+        for (pile_idx, pile) in self.tableau.iter_mut().enumerate() {
+            if let Some(card_idx) = pile.iter().position(|card| card.contains(x, y)) {
+                if pile[card_idx].face_up {
+                    let cards_to_drag = pile.split_off(card_idx); // Split off the dragged cards
+                    let offset_x = x - cards_to_drag[0].x;
+                    let offset_y = y - cards_to_drag[0].y;
+                    self.dragging_card = Some((cards_to_drag, offset_x, offset_y, pile_idx, 0)); // Store dragging info
+                    self.render();
+                }
+                return;
             }
         }
 
@@ -257,10 +257,14 @@ impl GameState {
                   
     fn handle_mousemove(&mut self, x: f64, y: f64) {
         if let Some((ref mut cards, offset_x, offset_y, _, _)) = self.dragging_card {
-            // Clear the previous position of the dragged cards
-            for card in cards.iter() {
-                self.ctx.clear_rect(card.x, card.y, CARD_WIDTH, CARD_HEIGHT);
-            }
+            // Calculate the area to clear
+            let min_x = cards.iter().map(|card| card.x).fold(f64::MAX, f64::min);
+            let max_x = cards.iter().map(|card| card.x + CARD_WIDTH).fold(f64::MIN, f64::max);
+            let min_y = cards.iter().map(|card| card.y).fold(f64::MAX, f64::min);
+            let max_y = cards.iter().map(|card| card.y + CARD_HEIGHT).fold(f64::MIN, f64::max);
+    
+            // Clear only the dragged card area
+            self.ctx.clear_rect(min_x, min_y, max_x - min_x, max_y - min_y);
     
             // Update the position of the dragged cards
             for (i, card) in cards.iter_mut().enumerate() {
@@ -268,12 +272,13 @@ impl GameState {
                 card.y = y - offset_y + i as f64 * 30.0; // Offset for stacked cards
             }
     
-            // Draw only the dragged cards at their new positions
+            // Redraw the dragged cards in their new positions
             for card in cards.iter() {
                 card.draw(&self.ctx);
             }
         }
-    }      
+    }
+        
     
     fn handle_mouseup(&mut self, x: f64, y: f64) {
         if let Some((mut cards, _, _, source_pile_idx, source_pile_type)) = self.dragging_card.take() {
@@ -310,36 +315,57 @@ impl GameState {
     }
 
     fn try_drop_card(&mut self, card: &Card, x: f64, y: f64) -> bool {
-        // Check tableau piles
-        for pile in self.tableau.iter_mut() {
+        // Combine foundation and tableau piles into a unified list with an indicator for pile type
+        let mut all_piles: Vec<(&mut Vec<Card>, bool)> = self
+            .foundation
+            .iter_mut()
+            .map(|pile| (pile, true)) // `true` indicates foundation pile
+            .chain(self.tableau.iter_mut().map(|pile| (pile, false))) // `false` indicates tableau pile
+            .collect();
+    
+        // Check each pile for a valid drop
+        for (pile, is_foundation) in all_piles.iter_mut() {
             if let Some(target) = pile.last() {
-                if target.contains(x, y) && Self::is_valid_tableau_move(card, target) {
-                    pile.push(card.clone());
-                    return true;
+                if target.contains(x, y) {
+                    if *is_foundation {
+                        // Check foundation rules
+                        if Self::is_valid_foundation_move(card, target) {
+                            pile.push(card.clone());
+                            return true;
+                        }
+                    } else {
+                        // Check tableau rules
+                        if Self::is_valid_tableau_move(card, target) {
+                            pile.push(card.clone());
+                            return true;
+                        }
+                    }
                 }
-            } else if pile.is_empty() && card.rank == "K" {
-                // Only Kings can be placed in empty tableau piles
-                pile.push(card.clone());
-                return true;
+            } else if pile.is_empty() {
+                if *is_foundation {
+                    // Allow only Aces to start a foundation pile
+                    if card.rank == "A" {
+                        pile.push(card.clone());
+                        return true;
+                    }
+                } else {
+                    // Allow only Kings to start an empty tableau pile
+                    if card.rank == "K" {
+                        pile.push(card.clone());
+                        return true;
+                    }
+                }
             }
         }
     
-        // Check foundation piles
-        for pile in self.foundation.iter_mut() {
-            if pile.last().map_or(card.rank == "A", |last_card| Self::is_valid_foundation_move(card, last_card)) {
-                pile.push(card.clone());
-                return true;
-            }
-        }
-    
-        false
+        false // Return false if no valid drop is found
     }
          
     fn try_drop_stack(&mut self, cards: &[Card], x: f64, y: f64) -> bool {
         for pile in self.tableau.iter_mut() {
             if let Some(target) = pile.last() {
                 if target.contains(x, y) && Self::is_valid_tableau_move(&cards[0], target) {
-                    pile.extend_from_slice(cards); // Add the entire stack
+                    pile.extend_from_slice(cards);
                     return true;
                 }
             } else if pile.is_empty() && cards[0].rank == "K" {
@@ -368,7 +394,8 @@ impl GameState {
         let rank_order = vec!["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
         let card_index = rank_order.iter().position(|&r| r == card.rank).unwrap();
         let target_index = rank_order.iter().position(|&r| r == target.rank).unwrap();
-
+    
+        // Ensure the card is the next in the sequence and matches the same suit
         card_index == target_index + 1 && card.suit == target.suit
     }
 

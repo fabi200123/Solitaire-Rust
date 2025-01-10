@@ -12,8 +12,8 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{window, CanvasRenderingContext2d, HtmlCanvasElement, HtmlImageElement, MouseEvent};
 
-const CARD_WIDTH: f64 = 100.0;
-const CARD_HEIGHT: f64 = 150.0;
+const CARD_WIDTH: f64 = 140.0;
+const CARD_HEIGHT: f64 = 190.0;
 const PILE_GAP: f64 = 50.0;
 const CANVAS_WIDTH: f64 = 7.0 * CARD_WIDTH + 40.0 * PILE_GAP; // 7 tableau piles + gaps
 const CANVAS_HEIGHT: f64 = 5.0 * CARD_HEIGHT + 20.0 * PILE_GAP; // Enough for stacked tableau cards
@@ -175,9 +175,19 @@ impl GameState {
 
         // Render tableau piles with increased vertical spacing
         for (i, pile) in self.tableau.iter_mut().enumerate() {
+            let length = pile.len();
             for (j, card) in pile.iter_mut().enumerate() {
                 card.x = PILE_GAP + i as f64 * (CARD_WIDTH + PILE_GAP);
                 card.y = 200.0 + j as f64 * 60.0 + 50.0;
+
+                // If this is the TOPMOST card in the pile, it's fully visible:
+                if j == length - 1 {
+                    card.height = CARD_HEIGHT; // 150.0
+                } else {
+                    // This card is underneath, so only let's say 60.0 px is showing
+                    card.height = 60.0;
+                }
+
                 card.draw(&self.ctx, &self.card_images);
             }
         }
@@ -274,14 +284,15 @@ impl GameState {
 
         // Check tableau piles
         for (pile_idx, pile) in self.tableau.iter_mut().enumerate() {
-            if let Some(card_idx) = pile.iter().position(|card| card.contains(x, y)) {
-                if pile[card_idx].face_up {
-                    let cards_to_drag = pile.split_off(card_idx); // Split off the dragged cards
-                    let offset_x = x - cards_to_drag[0].x;
-                    let offset_y = y - cards_to_drag[0].y;
-                    self.dragging_card = Some((cards_to_drag, offset_x, offset_y, pile_idx, 0)); // Store dragging info
-                    self.render();
-                }
+            if let Some(card_idx) = pile
+                .iter()
+                .rposition(|card| card.face_up && card.contains(x, y))
+            {
+                let cards_to_drag = pile.split_off(card_idx);
+                let offset_x = x - cards_to_drag[0].x;
+                let offset_y = y - cards_to_drag[0].y;
+                self.dragging_card = Some((cards_to_drag, offset_x, offset_y, pile_idx, 0));
+                self.render();
                 return;
             }
         }

@@ -176,16 +176,17 @@ impl GameState {
         // Render tableau piles with increased vertical spacing
         for (i, pile) in self.tableau.iter_mut().enumerate() {
             let length = pile.len();
+            let overlap = 60.0;
             for (j, card) in pile.iter_mut().enumerate() {
                 card.x = PILE_GAP + i as f64 * (CARD_WIDTH + PILE_GAP);
-                card.y = 200.0 + j as f64 * 60.0 + 50.0;
+                card.y = 200.0 + j as f64 * overlap + 50.0;
 
                 // If this is the TOPMOST card in the pile, it's fully visible:
                 if j == length - 1 {
-                    card.height = CARD_HEIGHT; // 150.0
+                    card.height = CARD_HEIGHT;
                 } else {
-                    // This card is underneath, so only let's say 60.0 px is showing
-                    card.height = 60.0;
+                    // This card is underneath. Only the top <overlap> is visible.
+                    card.height = overlap;
                 }
 
                 card.draw(&self.ctx, &self.card_images);

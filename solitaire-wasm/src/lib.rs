@@ -10,6 +10,7 @@ use rand::thread_rng;
 use rand::seq::SliceRandom;
 use std::rc::Rc;
 use std::cell::RefCell;
+use std::collections::HashMap;
 
 const CARD_WIDTH: f64 = 100.0;
 const CARD_HEIGHT: f64 = 150.0;
@@ -41,30 +42,19 @@ impl Card {
         }
     }
 
-    fn draw(&self, ctx: &CanvasRenderingContext2d) {
-        let img = HtmlImageElement::new().unwrap();
-        // Get the image sprite based on the card's suit and rank
-        let src = if self.face_up {
-            format!("./sprites/{}/{}.jpg", self.suit, self.rank)
+    fn draw(&self, ctx: &CanvasRenderingContext2d, card_images: &HashMap<String, HtmlImageElement>) {
+        // Build the key for the image
+        let key = if self.face_up {
+            format!("{}_{}", self.suit, self.rank)   // e.g. "hearts_A"
         } else {
-            "./sprites/cover/cover.jpg".to_string()
+            "cover".to_string()
         };
 
-        img.set_src(&src);
-
-        let img_clone = img.clone();
-        let ctx_clone = ctx.clone();
-        let x = self.x;
-        let y = self.y;
-
-        let closure = Closure::wrap(Box::new(move || {
-            ctx_clone
-                .draw_image_with_html_image_element(&img_clone, x, y)
+        if let Some(img) = card_images.get(&key) {
+            // Just draw the image directly (no new load, no onload event)
+            ctx.draw_image_with_html_image_element(img, self.x, self.y)
                 .unwrap();
-        }) as Box<dyn FnMut()>);
-
-        img.set_onload(Some(closure.as_ref().unchecked_ref()));
-        closure.forget();
+        }
     }
 
     fn contains(&self, x: f64, y: f64) -> bool {
@@ -80,6 +70,7 @@ struct GameState {
     selected_card: Option<(Card, usize, usize)>, // (Card, source pile index, source type)
     dragging_card: Option<(Vec<Card>, f64, f64, usize, usize)>, // Vec<Card> to store multiple cards
     canvas: HtmlCanvasElement,
+    card_images: HashMap<String, HtmlImageElement>,
     ctx: CanvasRenderingContext2d,
 }
 
@@ -106,7 +97,10 @@ impl GameState {
     fn new(ctx: CanvasRenderingContext2d, canvas: HtmlCanvasElement) -> Self {
         let mut deck = GameState::create_deck();
         deck.shuffle(&mut thread_rng());
-    
+
+        // Preload images
+        let card_images = GameState::preload_images();
+
         let mut tableau = vec![vec![]; 7];
         for i in 0..7 {
             for j in 0..=i {
@@ -125,9 +119,38 @@ impl GameState {
             dragging_card: None,
             canvas,
             ctx,
+            card_images,
         }
-    }       
-    
+    }
+
+    // Preload images for all suits/ranks plus the back
+    fn preload_images() -> HashMap<String, HtmlImageElement> {
+        let suits = ["hearts", "diamonds", "clubs", "spades"];
+        let ranks = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
+        let mut images = HashMap::new();
+
+        // Helper to load one image
+        let load_image = |src: &str| {
+            let img = HtmlImageElement::new().unwrap();
+            img.set_src(src);
+            img
+        };
+
+        // For each suit/rank
+        for suit in suits.iter() {
+            for rank in ranks.iter() {
+                let key = format!("{}_{}", suit, rank);
+                let path = format!("./sprites/{}/{}.jpg", suit, rank);
+                images.insert(key, load_image(&path));
+            }
+        }
+
+        // Add the back/cover
+        images.insert("cover".to_string(), load_image("./sprites/cover/cover.jpg"));
+
+        images
+    }
+
     fn render(&mut self) {
         self.ctx.clear_rect(0.0, 0.0, self.canvas.width() as f64, self.canvas.height() as f64);
         self.draw_background();
@@ -137,7 +160,7 @@ impl GameState {
             for (j, card) in pile.iter_mut().enumerate() {
                 card.x = PILE_GAP + i as f64 * (CARD_WIDTH + PILE_GAP);
                 card.y = 200.0 + j as f64 * 60.0 + 50.0;
-                card.draw(&self.ctx);
+                card.draw(&self.ctx, &self.card_images);
             }
         }
     
@@ -146,7 +169,7 @@ impl GameState {
             if let Some(card) = pile.last_mut() {
                 card.x = PILE_GAP + 4.5 * CARD_WIDTH + (i as f64 * (CARD_WIDTH + PILE_GAP));
                 card.y = PILE_GAP;
-                card.draw(&self.ctx);
+                card.draw(&self.ctx, &self.card_images);
             } else {
                 // Draw empty foundation slots
                 self.ctx.set_stroke_style(&JsValue::from_str("black"));
@@ -165,7 +188,7 @@ impl GameState {
             if let Some(card) = self.stock.last_mut() {
                 card.x = PILE_GAP;
                 card.y = PILE_GAP;
-                card.draw(&self.ctx);
+                card.draw(&self.ctx, &self.card_images);
             }
         } else {
             // Draw empty stock pile placeholder
@@ -178,7 +201,7 @@ impl GameState {
         if let Some(card) = self.discard.last_mut() {
             card.x = PILE_GAP + CARD_WIDTH + PILE_GAP;
             card.y = PILE_GAP;
-            card.draw(&self.ctx);
+            card.draw(&self.ctx, &self.card_images);
         } else {
             // Draw empty discard pile placeholder
             self.ctx.set_stroke_style(&JsValue::from_str("black"));
@@ -257,29 +280,28 @@ impl GameState {
     }
                   
     fn handle_mousemove(&mut self, x: f64, y: f64) {
-        if let Some((ref mut cards, offset_x, offset_y, _, _)) = self.dragging_card {
-            // Calculate the area to clear
-            let min_x = cards.iter().map(|card| card.x).fold(f64::MAX, f64::min);
-            let max_x = cards.iter().map(|card| card.x + CARD_WIDTH).fold(f64::MIN, f64::max);
-            let min_y = cards.iter().map(|card| card.y).fold(f64::MAX, f64::min);
-            let max_y = cards.iter().map(|card| card.y + CARD_HEIGHT).fold(f64::MIN, f64::max);
+        let mut cloned_cards_to_draw = None;
     
-            // Clear only the dragged card area
-            self.ctx.clear_rect(min_x, min_y, max_x - min_x, max_y - min_y);
-    
-            // Update the position of the dragged cards
+        if let Some((cards, offset_x, offset_y, _, _)) = &mut self.dragging_card {
+            // Update the dragged cards
             for (i, card) in cards.iter_mut().enumerate() {
-                card.x = x - offset_x;
-                card.y = y - offset_y + i as f64 * 30.0; // Offset for stacked cards
+                card.x = x - *offset_x;
+                card.y = y - *offset_y + i as f64 * 30.0;
             }
     
-            // Redraw the dragged cards in their new positions
-            for card in cards.iter() {
-                card.draw(&self.ctx);
+            // Clone their current state into a local variable
+            cloned_cards_to_draw = Some(cards.clone());
+        }
+
+        self.render();
+
+        // Draw the cloned cards on top
+        if let Some(cards_to_draw) = cloned_cards_to_draw {
+            for card in cards_to_draw.iter() {
+                card.draw(&self.ctx, &self.card_images);
             }
         }
-    }
-        
+    }    
     
     fn handle_mouseup(&mut self, x: f64, y: f64) {
         if let Some((mut cards, _, _, source_pile_idx, source_pile_type)) = self.dragging_card.take() {

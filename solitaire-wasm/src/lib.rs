@@ -14,10 +14,10 @@ use std::cell::RefCell;
 const CARD_WIDTH: f64 = 100.0;
 const CARD_HEIGHT: f64 = 150.0;
 const PILE_GAP: f64 = 50.0;
-const CANVAS_WIDTH: f64 = 7.0 * CARD_WIDTH + 20.0 * PILE_GAP; // 7 tableau piles + gaps
-const CANVAS_HEIGHT: f64 = 5.0 * CARD_HEIGHT + 10.0 * PILE_GAP; // Enough for stacked tableau cards
+const CANVAS_WIDTH: f64 = 7.0 * CARD_WIDTH + 40.0 * PILE_GAP; // 7 tableau piles + gaps
+const CANVAS_HEIGHT: f64 = 5.0 * CARD_HEIGHT + 20.0 * PILE_GAP; // Enough for stacked tableau cards
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct Card {
     rank: String,
     suit: String,
@@ -43,6 +43,7 @@ impl Card {
 
     fn draw(&self, ctx: &CanvasRenderingContext2d) {
         let img = HtmlImageElement::new().unwrap();
+        // Get the image sprite based on the card's suit and rank
         let src = if self.face_up {
             format!("./sprites/{}/{}.jpg", self.suit, self.rank)
         } else {
@@ -74,7 +75,7 @@ impl Card {
 struct GameState {
     tableau: Vec<Vec<Card>>, // 7 tableau piles
     foundation: Vec<Vec<Card>>, // 4 foundation piles
-    stock: Vec<Card>,
+    stock: Vec<Card>, // Draw pile
     discard: Vec<Card>, // Discard pile
     selected_card: Option<(Card, usize, usize)>, // (Card, source pile index, source type)
     dragging_card: Option<(Vec<Card>, f64, f64, usize, usize)>, // Vec<Card> to store multiple cards
@@ -175,7 +176,7 @@ impl GameState {
     
         // Render discard pile
         if let Some(card) = self.discard.last_mut() {
-            card.x = PILE_GAP + CARD_WIDTH + PILE_GAP; // Set to the visual discard pile location
+            card.x = PILE_GAP + CARD_WIDTH + PILE_GAP;
             card.y = PILE_GAP;
             card.draw(&self.ctx);
         } else {
@@ -206,7 +207,7 @@ impl GameState {
         // Check the foundation piles
         for (pile_idx, pile) in self.foundation.iter_mut().enumerate() {
             if let Some(card) = pile.last() {
-                let foundation_x = PILE_GAP + 4.5 * CARD_WIDTH + (pile_idx as f64 * (CARD_WIDTH + PILE_GAP)); // Use the same coordinates as in `render`
+                let foundation_x = PILE_GAP + 4.5 * CARD_WIDTH + (pile_idx as f64 * (CARD_WIDTH + PILE_GAP));
                 let foundation_y = PILE_GAP;
                 if x >= foundation_x && x <= foundation_x + CARD_WIDTH && y >= foundation_y && y <= foundation_y + CARD_HEIGHT {
                     // Drag the card from the foundation pile
@@ -234,13 +235,13 @@ impl GameState {
 
         // Check the stock pile (whether it has cards or is empty)
         if x >= PILE_GAP && x <= PILE_GAP + CARD_WIDTH && y >= PILE_GAP && y <= PILE_GAP + CARD_HEIGHT {
-            self.handle_stock_click(); // Trigger stock pile logic
+            self.handle_stock_click();
             return;
         }
     
         // Check the discard pile
         if let Some(card) = self.discard.last_mut() {
-            let discard_x = PILE_GAP + CARD_WIDTH + PILE_GAP; // Use the same rendering coordinates
+            let discard_x = PILE_GAP + CARD_WIDTH + PILE_GAP;
             let discard_y = PILE_GAP;
             if x >= discard_x && x <= discard_x + CARD_WIDTH && y >= discard_y && y <= discard_y + CARD_HEIGHT {
                 // Correct the card's position
@@ -358,7 +359,7 @@ impl GameState {
             }
         }
     
-        false // Return false if no valid drop is found
+        return false // Return false if no valid drop is found
     }
          
     fn try_drop_stack(&mut self, cards: &[Card], x: f64, y: f64) -> bool {
@@ -375,11 +376,12 @@ impl GameState {
             }
         }
     
-        false
+        return false
     }
-               
+
+    // Helper function for checking if a card is red or black
     fn is_red(card: &Card) -> bool {
-        card.suit == "hearts" || card.suit == "diamonds"
+        return card.suit == "hearts" || card.suit == "diamonds"
     }
 
     fn is_valid_tableau_move(card: &Card, target: &Card) -> bool {
@@ -387,7 +389,7 @@ impl GameState {
         let card_index = rank_order.iter().position(|&r| r == card.rank).unwrap();
         let target_index = rank_order.iter().position(|&r| r == target.rank).unwrap();
     
-        card_index + 1 == target_index && Self::is_red(card) != Self::is_red(target)
+        return card_index + 1 == target_index && Self::is_red(card) != Self::is_red(target)
     }    
 
     fn is_valid_foundation_move(card: &Card, target: &Card) -> bool {
@@ -396,12 +398,12 @@ impl GameState {
         let target_index = rank_order.iter().position(|&r| r == target.rank).unwrap();
     
         // Ensure the card is the next in the sequence and matches the same suit
-        card_index == target_index + 1 && card.suit == target.suit
+        return card_index == target_index + 1 && card.suit == target.suit
     }
 
     fn check_game_won(&self) -> bool {
         // Check if all cards are in the foundation piles
-        self.foundation.iter().all(|pile| pile.len() == 13) // 13 cards per foundation pile
+        return self.foundation.iter().all(|pile| pile.len() == 13) // 13 cards per foundation pile
     }
 
     fn celebrate_win(&self) {
@@ -439,7 +441,7 @@ impl GameState {
                     canvas.height() as f64 / 2.0,
                 )
                 .unwrap();
-                opacity -= 0.02; // Gradually reduce opacity
+                opacity -= 0.002; // Gradually reduce opacity
                 window()
                     .unwrap()
                     .request_animation_frame(
